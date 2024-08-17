@@ -1,50 +1,39 @@
 <?php
-// Kết nối đến cơ sở dữ liệu
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "library_db";
+include 'database.php';
 
-$conn = new mysqli($servername, $username, $password, $dbname);
+$search_query = isset($_GET['query']) ? $_GET['query'] : '';
+$order_by = isset($_GET['order_by']) ? $_GET['order_by'] : 'title';
+$order = isset($_GET['order']) ? $_GET['order'] : 'ASC';
 
-// Kiểm tra kết nối
-if ($conn->connect_error) {
-    die("Kết nối thất bại: " . $conn->connect_error);
-}
-
-// Xác định số sách trên mỗi trang
+// Số lượng sách trên mỗi trang
 $books_per_page = 10;
 
-// Xác định trang hiện tại từ tham số GET, mặc định là trang 1
+// Trang hiện tại
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $books_per_page;
 
-// Xử lý tìm kiếm
-$search_query = "";
-if (isset($_GET['search'])) {
-    $search_query = $conn->real_escape_string($_GET['search']);
-    $search_sql = " AND (books.title LIKE '%$search_query%' 
-                    OR authors.author_name LIKE '%$search_query%' 
-                    OR categories.category_name LIKE '%$search_query%')";
-} else {
-    $search_sql = "";
-}
+// Đếm tổng số sách thỏa mãn điều kiện tìm kiếm
+$count_sql = "SELECT COUNT(*) AS total FROM books 
+              JOIN authors ON books.author_id = authors.id 
+              JOIN categories ON books.category_id = categories.id
+              WHERE books.title LIKE '%$search_query%' 
+                 OR authors.author_name LIKE '%$search_query%' 
+                 OR categories.category_name LIKE '%$search_query%'";
+$count_result = $conn->query($count_sql);
+$total_books = $count_result->fetch_assoc()['total'];
 
-// Tìm tổng số sách để tính tổng số trang
-$total_books_sql = "SELECT COUNT(*) AS total FROM books 
-                    JOIN authors ON books.author_id = authors.id 
-                    JOIN categories ON books.category_id = categories.id 
-                    WHERE 1=1 $search_sql";
-$total_books_result = $conn->query($total_books_sql);
-$total_books = $total_books_result->fetch_assoc()['total'];
+// Tính số trang
 $total_pages = ceil($total_books / $books_per_page);
 
-// Truy vấn để lấy danh sách sách với phân trang
-$sql = "SELECT books.*, authors.author_name, categories.category_name 
-        FROM books
-        JOIN authors ON books.author_id = authors.id
+// Fetch books với tìm kiếm, sắp xếp và phân trang
+$sql = "SELECT books.id, books.title, authors.author_name, categories.category_name, books.publisher, books.publish_year, books.quantity 
+        FROM books 
+        JOIN authors ON books.author_id = authors.id 
         JOIN categories ON books.category_id = categories.id
-        WHERE 1=1 $search_sql
+        WHERE books.title LIKE '%$search_query%' 
+           OR authors.author_name LIKE '%$search_query%' 
+           OR categories.category_name LIKE '%$search_query%'
+        ORDER BY $order_by $order
         LIMIT $offset, $books_per_page";
 
 $result = $conn->query($sql);
@@ -102,6 +91,23 @@ $result = $conn->query($sql);
         </tbody>
     </table>
     
+    <!-- Pagination -->
+    <nav>
+        <ul class="pagination">
+            <?php if ($page > 1): ?>
+                <li class="page-item"><a class="page-link" href="?page=<?php echo $page - 1; ?>&query=<?php echo $search_query; ?>&order_by=<?php echo $order_by; ?>&order=<?php echo $order; ?>">Previous</a></li>
+            <?php endif; ?>
+            <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                <li class="page-item <?php if ($i == $page) echo 'active'; ?>">
+                    <a class="page-link" href="?page=<?php echo $i; ?>&query=<?php echo $search_query; ?>&order_by=<?php echo $order_by; ?>&order=<?php echo $order; ?>"><?php echo $i; ?></a>
+                </li>
+            <?php endfor; ?>
+            <?php if ($page < $total_pages): ?>
+                <li class="page-item"><a class="page-link" href="?page=<?php echo $page + 1; ?>&query=<?php echo $search_query; ?>&order_by=<?php echo $order_by; ?>&order=<?php echo $order; ?>">Next</a></li>
+            <?php endif; ?>
+        </ul>
+    </nav>
+    
     <!-- Delete Confirmation Modal -->
     <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
         <div class="modal-dialog">
@@ -120,24 +126,6 @@ $result = $conn->query($sql);
             </div>
         </div>
     </div>
-
-
-  <!-- Hiển thị phân trang -->
-  <nav>
-        <ul class="pagination">
-            <?php if ($page > 1): ?>
-                <li class="page-item"><a class="page-link" href="?page=<?php echo $page - 1; ?>&search=<?php echo htmlspecialchars($search_query); ?>">Previous</a></li>
-            <?php endif; ?>
-            <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                <li class="page-item <?php if ($i == $page) echo 'active'; ?>">
-                    <a class="page-link" href="?page=<?php echo $i; ?>&search=<?php echo htmlspecialchars($search_query); ?>"><?php echo $i; ?></a>
-                </li>
-            <?php endfor; ?>
-            <?php if ($page < $total_pages): ?>
-                <li class="page-item"><a class="page-link" href="?page=<?php echo $page + 1; ?>&search=<?php echo htmlspecialchars($search_query); ?>">Next</a></li>
-            <?php endif; ?>
-        </ul>
-    </nav>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
